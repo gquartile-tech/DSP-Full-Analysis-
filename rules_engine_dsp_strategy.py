@@ -5,11 +5,18 @@ from typing import Dict
 import pandas as pd
 
 from config_dsp_strategy import (
+    ACTION,
     CONTROL_NAMES, IMPACT_LABEL, IMPORTANCE, PRIORITY_POINTS,
     SCORING_EXCLUDED, SOURCES, WHY, ControlResult,
     STATUS_OK, STATUS_PARTIAL, STATUS_FLAG,
 )
 from reader_databricks_dsp import DSPContext, clean_text, money_str, roas_str, pct_str, to_float, trim, _find_col
+
+
+def _action(cid: str, status: str) -> str:
+    ctrl_actions = ACTION.get(cid, {})
+    return ctrl_actions.get(status, ctrl_actions.get('OK', ''))
+
 
 
 def evaluate_all(ctx: DSPContext) -> Dict[str, ControlResult]:
@@ -19,7 +26,7 @@ def evaluate_all(ctx: DSPContext) -> Dict[str, ControlResult]:
     # S001 — Budget Split Aligned with Funnel Strategy
     # ─────────────────────────────────────────────────────────────────────
     if ctx.upper_pct is None:
-        r['S001'] = ControlResult(STATUS_PARTIAL, 'Funnel spend data not available (07_DSP_Spend_by_Strategy_&_Funn). Cannot calculate budget split by funnel stage.', WHY['S001'], SOURCES['S001'])
+        r['S001'] = ControlResult(STATUS_PARTIAL, 'Funnel spend data not available (07_DSP_Spend_by_Strategy_&_Funn). Cannot calculate budget split by funnel stage.', WHY['S001'], SOURCES['S001'], _action('S001', STATUS_PARTIAL))
     else:
         obj = trim(ctx.primary_objective, 100) or 'Not documented'
         upper = ctx.upper_pct or 0
@@ -31,13 +38,13 @@ def evaluate_all(ctx: DSPContext) -> Dict[str, ControlResult]:
 
         # Flag if >80% in one layer without a clear strategy rationale
         if lower >= 80 and 'retarget' not in obj.lower() and 'retention' not in obj.lower():
-            r['S001'] = ControlResult(STATUS_FLAG, msg + ' Over 80% of spend is in lower funnel. The account is not building future audiences.', WHY['S001'], SOURCES['S001'])
+            r['S001'] = ControlResult(STATUS_FLAG, msg + ' Over 80% of spend is in lower funnel. The account is not building future audiences.', WHY['S001'], SOURCES['S001'], _action('S001', STATUS_FLAG))
         elif upper >= 70 and lower < 15:
-            r['S001'] = ControlResult(STATUS_PARTIAL, msg + ' Upper funnel is dominant with minimal lower funnel. Confirm that retargeting audiences have been built.', WHY['S001'], SOURCES['S001'])
+            r['S001'] = ControlResult(STATUS_PARTIAL, msg + ' Upper funnel is dominant with minimal lower funnel. Confirm that retargeting audiences have been built.', WHY['S001'], SOURCES['S001'], _action('S001', STATUS_PARTIAL))
         elif other >= 40:
-            r['S001'] = ControlResult(STATUS_PARTIAL, msg + ' A large share of spend is unclassified by funnel stage. Review order FunnelStage settings.', WHY['S001'], SOURCES['S001'])
+            r['S001'] = ControlResult(STATUS_PARTIAL, msg + ' A large share of spend is unclassified by funnel stage. Review order FunnelStage settings.', WHY['S001'], SOURCES['S001'], _action('S001', STATUS_PARTIAL))
         else:
-            r['S001'] = ControlResult(STATUS_OK, msg, WHY['S001'], SOURCES['S001'])
+            r['S001'] = ControlResult(STATUS_OK, msg, WHY['S001'], SOURCES['S001'], _action('S001', STATUS_OK))
 
     # ─────────────────────────────────────────────────────────────────────
     # S002 — ROAS Target Achievable Given Funnel Mix
@@ -54,11 +61,11 @@ def evaluate_all(ctx: DSPContext) -> Dict[str, ControlResult]:
 
         # If upper funnel is dominant and target ROAS is strict (>4x), flag
         if upper >= 40 and ctx.target_roas >= 4 and ctx.roas is not None and ctx.roas < ctx.target_roas * 0.8:
-            r['S002'] = ControlResult(STATUS_FLAG, msg + f' A ROAS target of {ctx.target_roas:.2f}x is difficult to achieve with {upper:.0f}% upper funnel spend. Consider a blended target or separate reporting per layer.', WHY['S002'], SOURCES['S002'])
+            r['S002'] = ControlResult(STATUS_FLAG, msg + f' A ROAS target of {ctx.target_roas:.2f}x is difficult to achieve with {upper:.0f}% upper funnel spend. Consider a blended target or separate reporting per layer.', WHY['S002'], SOURCES['S002'], _action('S002', STATUS_FLAG))
         elif upper >= 30 and ctx.target_roas >= 5:
-            r['S002'] = ControlResult(STATUS_PARTIAL, msg + f' Target ROAS of {ctx.target_roas:.2f}x may be challenging given the current upper funnel investment. Review attribution window settings.', WHY['S002'], SOURCES['S002'])
+            r['S002'] = ControlResult(STATUS_PARTIAL, msg + f' Target ROAS of {ctx.target_roas:.2f}x may be challenging given the current upper funnel investment. Review attribution window settings.', WHY['S002'], SOURCES['S002'], _action('S002', STATUS_PARTIAL))
         else:
-            r['S002'] = ControlResult(STATUS_OK, msg, WHY['S002'], SOURCES['S002'])
+            r['S002'] = ControlResult(STATUS_OK, msg, WHY['S002'], SOURCES['S002'], _action('S002', STATUS_OK))
 
     # ─────────────────────────────────────────────────────────────────────
     # S003 — Best-Selling ASINs Are Promoted
@@ -71,7 +78,7 @@ def evaluate_all(ctx: DSPContext) -> Dict[str, ControlResult]:
         sales_col  = _find_col(ctx.df08, ['AdSales'])
 
         if spend_col is None:
-            r['S003'] = ControlResult(STATUS_PARTIAL, 'AdSpend column not found in 08_DSP_ASIN_Level_Report.', WHY['S003'], SOURCES['S003'])
+            r['S003'] = ControlResult(STATUS_PARTIAL, 'AdSpend column not found in 08_DSP_ASIN_Level_Report.', WHY['S003'], SOURCES['S003'], _action('S003', STATUS_PARTIAL))
         else:
             df = ctx.df08.copy()
             df['_spend'] = pd.to_numeric(df[spend_col], errors='coerce').fillna(0)
@@ -89,29 +96,29 @@ def evaluate_all(ctx: DSPContext) -> Dict[str, ControlResult]:
                 top_not_promoted = top_by_sales[top_by_sales['_spend'] == 0]
                 top_asin_list = [clean_text(v) for v in top_not_promoted[asin_col].tolist()] if asin_col else []
                 if len(top_not_promoted) == 0:
-                    r['S003'] = ControlResult(STATUS_OK, f'{promoted_count} ASINs are receiving DSP spend. All top 5 ASINs by sales have active promotion.', WHY['S003'], SOURCES['S003'])
+                    r['S003'] = ControlResult(STATUS_OK, f'{promoted_count} ASINs are receiving DSP spend. All top 5 ASINs by sales have active promotion.', WHY['S003'], SOURCES['S003'], _action('S003', STATUS_OK))
                 elif len(top_not_promoted) <= 2:
                     r['S003'] = ControlResult(STATUS_PARTIAL, f'{len(top_not_promoted)} of the top 5 ASINs by sales have no DSP spend: {", ".join(top_asin_list[:3])}. Consider adding to a lower funnel order.', WHY['S003'], SOURCES['S003'])
                 else:
-                    r['S003'] = ControlResult(STATUS_FLAG, f'{len(top_not_promoted)} of the top 5 ASINs by sales have no DSP promotion: {", ".join(top_asin_list[:3])}. Budget is going to lower-priority products.', WHY['S003'], SOURCES['S003'])
+                    r['S003'] = ControlResult(STATUS_FLAG, f'{len(top_not_promoted)} of the top 5 ASINs by sales have no DSP promotion: {", ".join(top_asin_list[:3])}. Budget is going to lower-priority products.', WHY['S003'], SOURCES['S003'], _action('S003', STATUS_FLAG))
             else:
-                r['S003'] = ControlResult(STATUS_OK, f'{promoted_count} ASINs have active DSP spend out of {total_count} total in the report.', WHY['S003'], SOURCES['S003'])
+                r['S003'] = ControlResult(STATUS_OK, f'{promoted_count} ASINs have active DSP spend out of {total_count} total in the report.', WHY['S003'], SOURCES['S003'], _action('S003', STATUS_OK))
 
     # ─────────────────────────────────────────────────────────────────────
     # S004 — NTB Purchase Rate Above 50%
     # ─────────────────────────────────────────────────────────────────────
     if ctx.ntb_rate is None:
-        r['S004'] = ControlResult(STATUS_PARTIAL, 'NTB purchase rate not available in 02_DSP_Date_Range_KPIs. Check that NTBPurchases and Conversions columns are populated.', WHY['S004'], SOURCES['S004'])
+        r['S004'] = ControlResult(STATUS_PARTIAL, 'NTB purchase rate not available in 02_DSP_Date_Range_KPIs. Check that NTBPurchases and Conversions columns are populated.', WHY['S004'], SOURCES['S004'], _action('S004', STATUS_PARTIAL))
     else:
         ntb = ctx.ntb_rate
         ntb_count = int(ctx.ntb_purchases) if ctx.ntb_purchases is not None else 0
         total_conv_str = f'NTB rate: {ntb:.1f}% ({ntb_count:,} NTB of {int(ctx.ntb_purchases / ntb * 100) if ntb > 0 else 0:,} total purchases).'
         if ntb >= 50:
-            r['S004'] = ControlResult(STATUS_OK, total_conv_str + ' NTB rate meets the ≥50% benchmark for non-retargeting orders.', WHY['S004'], SOURCES['S004'])
+            r['S004'] = ControlResult(STATUS_OK, total_conv_str + ' NTB rate meets the ≥50% benchmark for non-retargeting orders.', WHY['S004'], SOURCES['S004'], _action('S004', STATUS_OK))
         elif ntb >= 30:
-            r['S004'] = ControlResult(STATUS_PARTIAL, total_conv_str + ' NTB rate is below 50%. Upper funnel orders may be over-indexing on existing buyers.', WHY['S004'], SOURCES['S004'])
+            r['S004'] = ControlResult(STATUS_PARTIAL, total_conv_str + ' NTB rate is below 50%. Upper funnel orders may be over-indexing on existing buyers.', WHY['S004'], SOURCES['S004'], _action('S004', STATUS_PARTIAL))
         else:
-            r['S004'] = ControlResult(STATUS_FLAG, total_conv_str + ' NTB rate is critically low. The account is not acquiring new customers despite upper funnel spend.', WHY['S004'], SOURCES['S004'])
+            r['S004'] = ControlResult(STATUS_FLAG, total_conv_str + ' NTB rate is critically low. The account is not acquiring new customers despite upper funnel spend.', WHY['S004'], SOURCES['S004'], _action('S004', STATUS_FLAG))
 
     # ─────────────────────────────────────────────────────────────────────
     # S005 — DSP Budget Is Min 15% of PPC Spend
@@ -122,16 +129,16 @@ def evaluate_all(ctx: DSPContext) -> Dict[str, ControlResult]:
     if dsp is None or ppc is None:
         r['S005'] = ControlResult(STATUS_PARTIAL, 'DSP vs PPC comparison data not available (10_DSP_vs_PPC_Comparison). Cannot verify the 15% ratio.', WHY['S005'], SOURCES['S005'])
     elif ppc == 0:
-        r['S005'] = ControlResult(STATUS_PARTIAL, f'DSP spend: {money_str(dsp)}. PPC spend is zero or not identified in 10_DSP_vs_PPC_Comparison. Ratio cannot be calculated.', WHY['S005'], SOURCES['S005'])
+        r['S005'] = ControlResult(STATUS_PARTIAL, f'DSP spend: {money_str(dsp)}. PPC spend is zero or not identified in 10_DSP_vs_PPC_Comparison. Ratio cannot be calculated.', WHY['S005'], SOURCES['S005'], _action('S005', STATUS_PARTIAL))
     else:
         ratio = dsp / ppc * 100
         msg = f'DSP spend: {money_str(dsp)}. PPC spend: {money_str(ppc)}. DSP as % of PPC: {ratio:.1f}%. Benchmark: ≥15%.'
         if ratio >= 15:
-            r['S005'] = ControlResult(STATUS_OK, msg, WHY['S005'], SOURCES['S005'])
+            r['S005'] = ControlResult(STATUS_OK, msg, WHY['S005'], SOURCES['S005'], _action('S005', STATUS_OK))
         elif ratio >= 8:
-            r['S005'] = ControlResult(STATUS_PARTIAL, msg + ' DSP is below 15% of PPC spend. Funnel influence is limited at this ratio.', WHY['S005'], SOURCES['S005'])
+            r['S005'] = ControlResult(STATUS_PARTIAL, msg + ' DSP is below 15% of PPC spend. Funnel influence is limited at this ratio.', WHY['S005'], SOURCES['S005'], _action('S005', STATUS_PARTIAL))
         else:
-            r['S005'] = ControlResult(STATUS_FLAG, msg + ' DSP represents less than 8% of PPC spend. The channel cannot meaningfully influence the full funnel at this level.', WHY['S005'], SOURCES['S005'])
+            r['S005'] = ControlResult(STATUS_FLAG, msg + ' DSP represents less than 8% of PPC spend. The channel cannot meaningfully influence the full funnel at this level.', WHY['S005'], SOURCES['S005'], _action('S005', STATUS_FLAG))
 
     return r
 
@@ -148,7 +155,7 @@ def compute_score(results: Dict[str, ControlResult]):
                 pen = PRIORITY_POINTS[imp] * 0.5
         total_penalty += pen
         findings.append({'cid': cid, 'name': CONTROL_NAMES[cid], 'status': res.status,
-                          'what': res.what, 'why': res.why,
+                          'what': res.what, 'why': res.why, 'action': res.action,
                           'importance': imp, 'impact': IMPACT_LABEL[imp], 'penalty': pen})
     score = 100 + total_penalty
     grade = _grade(score)

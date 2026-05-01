@@ -24,6 +24,7 @@ PANDAS_SHEETS = [
     '02_DSP_Date_Range_KPIs',
     '03_DSP_L24M_Monthly_Performance',
     '04_DSP_Monthly_YoY_Comparison',
+    '05_DSP_Yearly_KPIs__Current_vs_',
     '06_DSP_Order_Report',
     '07_DSP_Spend_by_Strategy_&_Funn',
     '08_DSP_ASIN_Level_Report',
@@ -33,6 +34,8 @@ PANDAS_SHEETS = [
     '12_Client_Journey_Insights',
     '13_Client_Success_Insights',
     '14_DSP_Project_on_SF',
+    '15_Customer_Journey_Funnel_Segm',
+    '16_Customer_Journey_Funnel_Segm',
 ]
 
 
@@ -57,6 +60,9 @@ class DSPContext:
 
     # ── 04: YoY comparison ────────────────────────────────────────────────
     df04: Optional[pd.DataFrame] = None
+
+    # ── 05: Yearly KPIs ───────────────────────────────────────────────────
+    df05: Optional[pd.DataFrame] = None
 
     # ── 06: Order report ──────────────────────────────────────────────────
     df06: Optional[pd.DataFrame] = None
@@ -85,13 +91,27 @@ class DSPContext:
     # ── 14: DSP Project on SF ─────────────────────────────────────────────
     df14: Optional[pd.DataFrame] = None
 
+    # ── 15: Customer Journey Funnel Segment Mapping ───────────────────────
+    df15: Optional[pd.DataFrame] = None
+
+    # ── 16: Customer Journey Funnel Segment Keywords ──────────────────────
+    df16: Optional[pd.DataFrame] = None
+
     # ── Derived / cached scalars ──────────────────────────────────────────
     daily_target:   Optional[float] = None
     target_roas:    Optional[float] = None
+    target_acos:    Optional[float] = None   # Target_ACoS__c from sheet 14
+    target_tacos:   Optional[float] = None   # Target_TACoS__c from sheet 14
     at_risk:        Optional[bool]  = None
     risk_notes:     str = ''
     cs_notes:       str = ''
     project_status: str = ''
+
+    # ── Constraints & KPI (from sheet 13) ────────────────────────────────
+    primary_kpi:       str   = 'ROAS'          # Primary_Spend_KPI__c
+    acos_constraint:   Optional[float] = None  # ACOS_Constraint__c (as %)
+    tacos_constraint:  Optional[float] = None  # TACOS_Constraint__c (as %)
+    budget_constraint: Optional[float] = None  # Monthly_Budget__c
 
     primary_objective:   str = ''
     current_challenges:  str = ''
@@ -392,6 +412,24 @@ def trend_direction(values: list) -> str:
     return 'stable'
 
 
+def _latest_row_by_modstamp(df: pd.DataFrame) -> pd.Series:
+    """Return the row with the most recent SystemModstamp. Falls back to iloc[0]."""
+    mod_col = next(
+        (c for c in df.columns if 'systemmod' in str(c).lower() or 'modstamp' in str(c).lower()),
+        None
+    )
+    if mod_col:
+        try:
+            df2 = df.copy()
+            df2['_ts'] = pd.to_datetime(df2[mod_col], errors='coerce')
+            valid = df2.dropna(subset=['_ts'])
+            if not valid.empty:
+                return valid.loc[valid['_ts'].idxmax()].drop(labels=['_ts'])
+        except Exception:
+            pass
+    return df.iloc[0]
+
+
 # ---------------------------------------------------------------------------
 # Main loader
 # ---------------------------------------------------------------------------
@@ -407,6 +445,7 @@ def load_dsp_context(path: str) -> DSPContext:
     ctx.df02 = sheets.get('02_DSP_Date_Range_KPIs')
     ctx.df03 = sheets.get('03_DSP_L24M_Monthly_Performance')
     ctx.df04 = sheets.get('04_DSP_Monthly_YoY_Comparison')
+    ctx.df05 = sheets.get('05_DSP_Yearly_KPIs__Current_vs_')
     ctx.df06 = sheets.get('06_DSP_Order_Report')
     ctx.df07 = sheets.get('07_DSP_Spend_by_Strategy_&_Funn')
     ctx.df08 = sheets.get('08_DSP_ASIN_Level_Report')
@@ -416,6 +455,8 @@ def load_dsp_context(path: str) -> DSPContext:
     ctx.df12 = sheets.get('12_Client_Journey_Insights')
     ctx.df13 = sheets.get('13_Client_Success_Insights')
     ctx.df14 = sheets.get('14_DSP_Project_on_SF')
+    ctx.df15 = sheets.get('15_Customer_Journey_Funnel_Segm')
+    ctx.df16 = sheets.get('16_Customer_Journey_Funnel_Segm')
 
     # ── Step 3: Derive scalars (no I/O, pure computation) ─────────────────
 
@@ -432,20 +473,33 @@ def load_dsp_context(path: str) -> DSPContext:
 
         ctx.daily_target   = to_float(_find_col_val(proj_row, ['daily_target_spend__c']))
         ctx.target_roas    = to_float(_find_col_val(proj_row, ['Target_ROAS__c']))
+        ctx.target_acos    = to_float(_find_col_val(proj_row, ['Target_ACoS__c']))
+        ctx.target_tacos   = to_float(_find_col_val(proj_row, ['Target_TACoS__c']))
         ctx.at_risk        = _bool_val(_find_col_val(proj_row, ['At_Risk__c']))
         ctx.risk_notes     = clean_text(_find_col_val(proj_row, ['Risk_Reason_Notes__c']))
         ctx.cs_notes       = clean_text(_find_col_val(proj_row, ['CS_Notes__c']))
         ctx.project_status = clean_text(_find_col_val(proj_row, ['Project_Status__c']))
 
-    # 13 — Client Success Insights
+    # 13 — Client Success Insights (latest row by SystemModstamp)
     if ctx.df13 is not None and not ctx.df13.empty:
-        r = ctx.df13.iloc[0]
+        r = _latest_row_by_modstamp(ctx.df13)
         ctx.primary_objective  = clean_text(_row_val(r, ['Primary_Objective__c']))
         ctx.current_challenges = clean_text(_row_val(r, ['Current_Challenges__c']))
         ctx.near_term          = clean_text(_row_val(r, ['Near_Term_3_Month_Considerations__c']))
         ctx.churn_risk         = clean_text(_row_val(r, ['CSM_Churn_Risk__c']))
         ctx.account_risk_score = _row_val(r, ['Account_Risk_Score__c'])
         ctx.csi_last_modified  = _row_val(r, ['LastModifiedDate'])
+
+        # Constraints and primary KPI — mirrors Amazon Health reader
+        raw_kpi = clean_text(_row_val(r, ['Primary_Spend_KPI__c'])).upper()
+        ctx.primary_kpi = raw_kpi if raw_kpi in ('ACOS', 'TACOS', 'ROAS') else 'ROAS'
+
+        acos_raw = to_float(_row_val(r, ['ACOS_Constraint__c']))
+        tacos_raw = to_float(_row_val(r, ['TACOS_Constraint__c']))
+        # Store as plain % value (e.g. 12 means 12%) — writer formats it
+        ctx.acos_constraint  = acos_raw
+        ctx.tacos_constraint = tacos_raw
+        ctx.budget_constraint = to_float(_row_val(r, ['Monthly_Budget__c']))
 
     # 12 — Client Journey Map
     if ctx.df12 is not None and not ctx.df12.empty:

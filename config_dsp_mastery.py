@@ -40,7 +40,7 @@ CONTROL_NAMES = {
 
 WHY = {
     'M001': 'An account without a documented objective will be optimized toward the last thing someone mentioned in a call. That is not strategy — it is reactive management that erodes client confidence.',
-    'M002': 'Without a documented ROAS target, the client and team have no shared definition of what good looks like. Any ROAS becomes acceptable by default, which means underperformance can persist without being flagged.',
+    'M002': 'Without a documented efficiency target, the client and team have no shared definition of what good looks like. Any result becomes acceptable by default, which means underperformance can persist without being flagged.',
     'M003': 'An empty or inaccurate daily target means pacing issues go undetected until the end of the month. At that point, the options are overspend or a gap in coverage — both of which are avoidable.',
     'M004': 'A CSP that is incomplete or stale is not a CSP — it is a form that was filled out once and forgotten. When the CSP does not reflect reality, the whole account narrative breaks down during a review.',
     'M005': 'The Journey Map is what tells the team whether to push growth or protect retention. Without it, strategy decisions are made without a framework, leading to inconsistent execution across the account lifecycle.',
@@ -52,7 +52,7 @@ WHY = {
 
 SOURCES = {
     'M001': '14_DSP_Project_on_SF · CS_Notes__c + Target_ROAS__c',
-    'M002': '14_DSP_Project_on_SF · Target_ROAS__c',
+    'M002': '14_DSP_Project_on_SF · Target_ROAS__c / Target_ACoS__c',
     'M003': '14_DSP_Project_on_SF · daily_target_spend__c',
     'M004': '13_Client_Success_Insights · Primary_Objective__c / Current_Challenges__c / Near_Term_3_Month_Considerations__c',
     'M005': '12_Client_Journey_Insights · StatusS1–S4 / StrategyS1–S4',
@@ -62,6 +62,48 @@ SOURCES = {
     'M009': 'Manual review — QR presentation call',
 }
 
+ACTION = {
+    'M001': {
+        'FLAG':    'Write the account objective in Salesforce CS Notes before the next QR — include the strategic goal, the primary KPI, and the timeframe. Without this, the strategist cannot align execution to what the client actually wants.',
+        'PARTIAL': 'Complete the objective by adding a measurable KPI target and timeframe. A vague objective is as useful as no objective during a review.',
+        'OK':      'Objective is documented. Review it at the start of each QR to confirm it still reflects the client\'s current priority.',
+    },
+    'M002': {
+        'FLAG':    'Set the efficiency target in Salesforce immediately. Get confirmation from the client if it has not been formally agreed. An account running without a documented target has no performance accountability.',
+        'OK':      'Efficiency target is documented. Confirm it is still valid with the client at the next QR.',
+    },
+    'M003': {
+        'FLAG':    'Set the daily spend target in Salesforce to match the approved monthly budget divided by the number of active days. Without this, pacing alerts cannot fire and month-end surprises become inevitable.',
+        'PARTIAL': 'Update the daily target to match the current approved budget. If the budget has changed, update Salesforce before the next pacing check.',
+        'OK':      'Daily spend target is set and pacing is within range. No action required.',
+    },
+    'M004': {
+        'FLAG':    'Complete all three CSP fields in Salesforce before the next QR: objective, current challenges, and near-term plan. An empty CSP means the account has no documented story — and the client will notice.',
+        'PARTIAL': 'Fill in the missing CSP fields this week. The CSP is the first thing a reviewer reads — incomplete fields signal a lack of account ownership.',
+        'OK':      'CSP is complete. Update it after each QR if the client\'s priorities or challenges change.',
+    },
+    'M005': {
+        'FLAG':    'Set the active Journey Map stage in Salesforce before the next QR. Without it, you cannot determine whether the current strategy is appropriate for the client\'s lifecycle phase.',
+        'OK':      'Journey Map is active. Confirm the stage still reflects the client\'s current situation at each QR.',
+    },
+    'M006': {
+        'FLAG':    'Update the At Risk flag and add a note explaining the current situation. A flag without a reason is not actionable — the reviewer cannot help if they do not know why.',
+        'PARTIAL': 'Add the missing risk reason note to Salesforce. Even one sentence explaining the risk is enough to make the flag useful.',
+        'OK':      'Risk status is current. No action required.',
+    },
+    'M007': {
+        'FLAG':    'Schedule a call with the client this week. Two reporting cycles without contact means you are managing an account you no longer have a current read on — and the client has noticed the silence.',
+        'PARTIAL': 'Book the next call before the 90-day threshold is hit. Include a specific agenda item tied to current performance so the call has substance.',
+        'OK':      'Call cadence is being maintained. No action required.',
+    },
+    'M008': {
+        'OK': 'Assess CSM articulation during the QR presentation call.',
+    },
+    'M009': {
+        'OK': 'Assess CSM–strategist alignment during the QR presentation call.',
+    },
+}
+
 
 @dataclass(frozen=True)
 class ControlResult:
@@ -69,3 +111,4 @@ class ControlResult:
     what:   str = ''
     why:    str = ''
     source: str = ''
+    action: str = ''

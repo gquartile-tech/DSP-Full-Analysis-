@@ -45,6 +45,34 @@ SOURCES = {
     'S005': '10_DSP_vs_PPC_Comparison · AdSpendUSD (DSP) vs AdSpendUSD (PPC)',
 }
 
+ACTION = {
+    'S001': {
+        'FLAG':    'Bring the budget reallocation proposal to the next QR with numbers. Show the client exactly what % is currently going to each funnel layer, what the recommended split is, and what outcome you expect from the change.',
+        'PARTIAL': 'Confirm with the strategist whether the current funnel split is intentional. If not, align on a rebalancing plan before the next review period.',
+        'OK':      'Budget split is aligned with the stated strategy. Document it in QR notes as evidence of strategic execution.',
+    },
+    'S002': {
+        'FLAG':    'Set a separate ROAS expectation for upper funnel orders in the client conversation. Blended ROAS will always look weak when upper funnel spend is high — the client needs to understand what each layer is supposed to deliver.',
+        'PARTIAL': 'Review the attribution window setting with the strategist. A tighter window will suppress upper funnel ROAS artificially. If it needs adjustment, make the change and explain the impact to the client.',
+        'OK':      'ROAS target is achievable given the current funnel mix. No action required.',
+    },
+    'S003': {
+        'FLAG':    'Add the top-selling ASINs without DSP spend to an existing lower funnel order this week. Defending your best organic sellers with retargeting spend is the highest-ROI DSP action available for most accounts.',
+        'PARTIAL': 'Review the unprotected top ASINs with the strategist and agree on which to add to a retargeting order. Prioritize by organic rank sensitivity.',
+        'OK':      'Best-selling ASINs are covered by DSP. Review ASIN coverage quarterly as the product mix evolves.',
+    },
+    'S004': {
+        'FLAG':    'Audit the upper funnel audiences currently in use. If NTB rate is critically low, the account is reaching existing buyers instead of new ones — the audience definition or exclusion logic needs to be rebuilt.',
+        'PARTIAL': 'Review upper funnel audience segments with the strategist. Check whether purchase exclusions are applied correctly and whether the prospecting pool is large enough to drive genuine new customer acquisition.',
+        'OK':      'NTB rate is above 50%. Highlight this in the QR as evidence that upper funnel spend is working.',
+    },
+    'S005': {
+        'FLAG':    'Present the DSP-to-PPC ratio to the client and make the case for increasing DSP investment. At less than 8% of PPC spend, DSP cannot build meaningful audiences — it is running below the threshold where it can influence the funnel.',
+        'PARTIAL': 'Include a DSP budget increase recommendation in the next QR. Show the client what a 15% ratio would look like in absolute spend terms and what outcomes it would enable.',
+        'OK':      'DSP budget is at or above 15% of PPC spend. No action required.',
+    },
+}
+
 
 @dataclass(frozen=True)
 class ControlResult:
@@ -52,3 +80,4 @@ class ControlResult:
     what:   str = ''
     why:    str = ''
     source: str = ''
+    action: str = ''
