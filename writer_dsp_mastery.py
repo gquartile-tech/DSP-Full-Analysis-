@@ -35,7 +35,8 @@ def write_dsp_mastery_output(template_path, output_path, results, ctx):
         ws_ref[f'D{rr}'] = res.status
         ws_ref[f'H{rr}'] = res.what
         ws_ref[f'I{rr}'] = res.why
-        for cell_ref in [f'H{rr}', f'I{rr}']:
+        ws_ref[f'J{rr}'] = res.action
+        for cell_ref in [f'H{rr}', f'I{rr}', f'J{rr}']:
             ws_ref[cell_ref].alignment = Alignment(wrap_text=True, vertical='top')
 
     wb.save(output_path)
