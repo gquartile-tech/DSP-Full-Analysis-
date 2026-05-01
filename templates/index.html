@@ -121,7 +121,7 @@
   <h1>DSP CoE <span>Analysis</span><br>Report Generator</h1>
   <p class="tagline">
     One DSP Databricks export. Four analysis reports — Framework, Account Health, Account Mastery, and Strategy.<br>
-    All four agents run in parallel. Each output is ready to download individually.
+    Agents run sequentially. Each output is ready to download as it completes.
   </p>
 
   <div class="card">
@@ -142,8 +142,8 @@
     </div>
 
     <div class="section">
-      <div class="step-lbl">STEP 02 — AGENTS (PARALLEL)</div>
-      <div class="step-title">Four DSP analyses will run simultaneously</div>
+      <div class="step-lbl">STEP 02 — AGENTS (SEQUENTIAL)</div>
+      <div class="step-title">Four DSP analyses will run one after another</div>
       <div class="agents-grid">
         <div class="agent-pill"><span class="agent-dot"></span><span class="agent-name">DSP Framework</span></div>
         <div class="agent-pill"><span class="agent-dot"></span><span class="agent-name">Account Health</span></div>
@@ -158,7 +158,7 @@
   <div id="prog">
     <div class="prog-head">
       <span class="spin" id="spin"></span>
-      <span id="prog-lbl">PROCESSING — ALL 4 DSP AGENTS RUNNING IN PARALLEL</span>
+      <span id="prog-lbl">PROCESSING — RUNNING DSP AGENTS</span>
     </div>
     <div class="prog-steps">
       <div class="ps" id="s1"><span class="ps-dot"></span>Reading DSP export &amp; account header</div>
@@ -255,23 +255,14 @@ pillX.addEventListener('click', function(){
 });
 
 // ── Progress steps ────────────────────────────────────────────────────────────
-var steps  = ['s1','s2','s3','s4','s5','s6'];
-var delays = [0, 600, 1400, 2200, 3000, 4200];
-var timers = [];
+var steps = ['s1','s2','s3','s4','s5','s6'];
 
-function startSteps() {
-  timers.forEach(clearTimeout); timers = [];
-  steps.forEach(function(id){ document.getElementById(id).className = 'ps'; });
-  steps.forEach(function(id, i){
-    timers.push(setTimeout(function(){
-      if(i > 0) document.getElementById(steps[i-1]).className = 'ps done';
-      document.getElementById(id).className = 'ps active';
-    }, delays[i]));
-  });
+function activateStep(i) {
+  if (i > 0) document.getElementById(steps[i-1]).className = 'ps done';
+  document.getElementById(steps[i]).className = 'ps active';
 }
 
 function doneSteps() {
-  timers.forEach(clearTimeout);
   steps.forEach(function(id){ document.getElementById(id).className = 'ps done'; });
   document.getElementById('spin').style.display = 'none';
   document.getElementById('prog-lbl').textContent = 'COMPLETE';
@@ -318,9 +309,11 @@ function renderError(key, msg) {
 }
 
 // ── Post one agent ────────────────────────────────────────────────────────────
-function postAgent(endpoint, key, formData) {
+function postAgent(endpoint, key) {
   setStatus(key, 'running', 'RUNNING');
-  return fetch(endpoint, { method: 'POST', body: formData })
+  var fd = new FormData();
+  fd.append('file', file);
+  return fetch(endpoint, { method: 'POST', body: fd })
     .then(function(r){ return r.json(); })
     .then(function(data){
       if (data.error) renderError(key, data.error);
@@ -329,14 +322,14 @@ function postAgent(endpoint, key, formData) {
     .catch(function(e){ renderError(key, e.message || 'Network error'); });
 }
 
-// ── Run all 4 in parallel ─────────────────────────────────────────────────────
-runB.addEventListener('click', function() {
+// ── Run all 4 sequentially ────────────────────────────────────────────────────
+runB.addEventListener('click', async function() {
   if (!file) return;
   runB.disabled = true;
   errEl.style.display = 'none';
   reset.style.display = 'none';
 
-  // Show results panel immediately with PENDING state
+  // Show results panel with PENDING state
   ['framework','health','mastery','strategy'].forEach(function(k){
     setStatus(k, 'pending', 'PENDING');
     document.getElementById('body-' + k).innerHTML = '';
@@ -344,34 +337,33 @@ runB.addEventListener('click', function() {
   res.style.display  = 'block';
   prog.style.display = 'block';
   document.getElementById('spin').style.display = '';
-  document.getElementById('prog-lbl').textContent = 'PROCESSING — ALL 4 DSP AGENTS RUNNING IN PARALLEL';
-  startSteps();
+  document.getElementById('prog-lbl').textContent = 'PROCESSING — RUNNING DSP AGENTS';
 
-  var agents = [
-    { endpoint: '/analyze/dsp/framework', key: 'framework' },
-    { endpoint: '/analyze/dsp/health',    key: 'health'    },
-    { endpoint: '/analyze/dsp/mastery',   key: 'mastery'   },
-    { endpoint: '/analyze/dsp/strategy',  key: 'strategy'  },
-  ];
+  // Step 1 — reading file
+  activateStep(0);
 
-  // Build one FormData per agent (can't reuse the same object across fetches)
-  var promises = agents.map(function(a) {
-    var fd = new FormData();
-    fd.append('file', file);
-    return postAgent(a.endpoint, a.key, fd);
-  });
+  // Step 2 — Framework
+  activateStep(1);
+  await postAgent('/analyze/dsp/framework', 'framework');
 
-  Promise.all(promises).then(function() {
-    doneSteps();
-    reset.style.display = 'block';
-    res.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
+  // Step 3 — Health
+  activateStep(2);
+  await postAgent('/analyze/dsp/health', 'health');
+
+  // Step 4 — Mastery
+  activateStep(3);
+  await postAgent('/analyze/dsp/mastery', 'mastery');
+
+  // Step 5 — Strategy
+  activateStep(4);
+  await postAgent('/analyze/dsp/strategy', 'strategy');
+
+  // Step 6 — Done
+  activateStep(5);
+  doneSteps();
+  reset.style.display = 'block';
+  res.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
-
-function showErr(msg) {
-  errEl.textContent   = '⚠  ' + msg;
-  errEl.style.display = 'block';
-}
 
 reset.addEventListener('click', function() {
   file = null; fi.value = '';
