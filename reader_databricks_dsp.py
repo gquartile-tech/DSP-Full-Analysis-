@@ -189,7 +189,15 @@ def _read_df(wb, prefix: str) -> Optional[pd.DataFrame]:
         return None
     try:
         ws = wb[name]
-        rows = list(ws.iter_rows(values_only=True))
+        # Fast path: values_only=True works for most sheets
+        try:
+            rows = list(ws.iter_rows(values_only=True))
+        except Exception:
+            # Fallback: iterate rows, extract each cell value individually.
+            # This handles rich-text inline strings that crash the streaming parser.
+            rows = []
+            for row in ws.iter_rows():
+                rows.append(tuple(_safe_cell(c) for c in row))
         if len(rows) <= DEFAULT_HEADER_ROW:
             return None
         raw_headers = rows[DEFAULT_HEADER_ROW]
@@ -338,8 +346,21 @@ def _compute_funnel_splits(df07: Optional[pd.DataFrame]) -> tuple:
 # Main loader
 # ---------------------------------------------------------------------------
 
+def _safe_cell(cell) -> object:
+    """Extract cell value safely, returning None on any openpyxl parse error."""
+    try:
+        return cell.value
+    except Exception:
+        return None
+
+
 def load_dsp_context(path: str) -> DSPContext:
-    wb = load_workbook(path, data_only=True, read_only=False)
+    """
+    Load the workbook with read_only=True (lower memory). If the streaming XML
+    parser crashes on a rich-text inline string cell, _read_df falls back to
+    cell-by-cell extraction which skips the bad cell and continues.
+    """
+    wb = load_workbook(path, data_only=True, read_only=True)
 
     try:
         ws01 = _get_ws(wb, '01_DSP_Advertiser')
