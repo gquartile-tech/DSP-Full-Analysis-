@@ -38,6 +38,9 @@ class DSPContext:
     # ── 04: YoY comparison ────────────────────────────────────────────────
     df04: Optional[pd.DataFrame] = None   # 04_DSP_Monthly_YoY_Comparison
 
+    # ── 05: Yearly KPIs ───────────────────────────────────────────────────
+    df05: Optional[pd.DataFrame] = None   # 05_DSP_Yearly_KPIs
+
     # ── 06: Order report ──────────────────────────────────────────────────
     df06: Optional[pd.DataFrame] = None   # 06_DSP_Order_Report
 
@@ -374,6 +377,7 @@ def load_dsp_context(path: str) -> DSPContext:
         ctx.df02 = _read_df(wb, '02_DSP_Date_Range_KPIs')
         ctx.df03 = _read_df(wb, '03_DSP_L24M_Monthly_Performance')
         ctx.df04 = _read_df(wb, '04_DSP_Monthly_YoY_Comparison')
+        ctx.df05 = _read_df(wb, '05_DSP_Yearly_KPIs')
         ctx.df06 = _read_df(wb, '06_DSP_Order_Report')
         ctx.df07 = _read_df(wb, '07_DSP_Spend_by_Strategy_&_Funn')
         ctx.df08 = _read_df(wb, '08_DSP_ASIN_Level_Report')
