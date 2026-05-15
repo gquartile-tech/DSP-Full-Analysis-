@@ -64,6 +64,7 @@ class DSPContext:
 
     # ── 14: DSP Project on SF ─────────────────────────────────────────────
     df14: Optional[pd.DataFrame] = None   # 14_DSP_Project_on_SF
+    df15: Optional[pd.DataFrame] = None   # 15_Customer_Journey_Funnel_Segm
 
     # ── Derived / cached scalars ──────────────────────────────────────────
     # From 14_DSP_Project_on_SF (first Live row matching advertiser)
@@ -382,6 +383,7 @@ def load_dsp_context(path: str) -> DSPContext:
         ctx.df12 = _read_df(wb, '12_Client_Journey_Insights')
         ctx.df13 = _read_df(wb, '13_Client_Success_Insights')
         ctx.df14 = _read_df(wb, '14_DSP_Project_on_SF')
+        ctx.df15 = _read_df(wb, '15_Customer_Journey_Funnel_Segm')
 
     finally:
         try:
