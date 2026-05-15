@@ -537,6 +537,25 @@ def _row_val(row, candidates: list):
     return _find_col_val(row, candidates)
 
 
+def _latest_row_by_modstamp(df) -> object:
+    """Return the row with the most recent LastModifiedDate from a DataFrame.
+    Falls back to the last row if no modstamp column is found."""
+    if df is None or df.empty:
+        return df.iloc[0] if df is not None and not df.empty else None
+    col = _find_col(df, ['LastModifiedDate', 'lastmodifieddate', 'modifieddate'])
+    if col:
+        try:
+            import pandas as pd
+            df2 = df.copy()
+            df2['_ts'] = pd.to_datetime(df2[col], errors='coerce')
+            latest_idx = df2['_ts'].idxmax()
+            return df.loc[latest_idx]
+        except Exception:
+            pass
+    return df.iloc[-1]
+
+
+
 def _bool_val(v) -> Optional[bool]:
     if v is None:
         return None
