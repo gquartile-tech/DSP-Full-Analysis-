@@ -121,7 +121,7 @@
   <h1>DSP CoE <span>Analysis</span><br>Report Generator</h1>
   <p class="tagline">
     One DSP Databricks export. Four analysis reports — Framework, Account Health, Account Mastery, and Strategy.<br>
-    All four agents run in parallel. Each output is ready to download individually.
+    Agents run sequentially. Each output is ready to download as it completes.
   </p>
 
   <div class="card">
@@ -142,8 +142,8 @@
     </div>
 
     <div class="section">
-      <div class="step-lbl">STEP 02 — AGENTS (PARALLEL)</div>
-      <div class="step-title">Four DSP analyses will run simultaneously</div>
+      <div class="step-lbl">STEP 02 — AGENTS (SEQUENTIAL)</div>
+      <div class="step-title">Four DSP analyses will run one after another</div>
       <div class="agents-grid">
         <div class="agent-pill"><span class="agent-dot"></span><span class="agent-name">DSP Framework</span></div>
         <div class="agent-pill"><span class="agent-dot"></span><span class="agent-name">Account Health</span></div>
@@ -158,7 +158,7 @@
   <div id="prog">
     <div class="prog-head">
       <span class="spin" id="spin"></span>
-      <span id="prog-lbl">PROCESSING — ALL 4 DSP AGENTS RUNNING IN PARALLEL</span>
+      <span id="prog-lbl">PROCESSING — RUNNING DSP AGENTS</span>
     </div>
     <div class="prog-steps">
       <div class="ps" id="s1"><span class="ps-dot"></span>Reading DSP export &amp; account header</div>
@@ -255,26 +255,31 @@ pillX.addEventListener('click', function(){
 });
 
 // ── Progress steps ────────────────────────────────────────────────────────────
-var steps  = ['s1','s2','s3','s4','s5','s6'];
-var delays = [0, 600, 1400, 2200, 3000, 4200];
-var timers = [];
+var steps = ['s1','s2','s3','s4','s5','s6'];
+var _stepTimer = null;
 
-function startSteps() {
-  timers.forEach(clearTimeout); timers = [];
-  steps.forEach(function(id){ document.getElementById(id).className = 'ps'; });
-  steps.forEach(function(id, i){
-    timers.push(setTimeout(function(){
-      if(i > 0) document.getElementById(steps[i-1]).className = 'ps done';
-      document.getElementById(id).className = 'ps active';
-    }, delays[i]));
-  });
+function activateStep(i) {
+  if (i > 0) document.getElementById(steps[i-1]).className = 'ps done';
+  if (i < steps.length) document.getElementById(steps[i]).className = 'ps active';
 }
 
 function doneSteps() {
-  timers.forEach(clearTimeout);
+  if (_stepTimer) { clearInterval(_stepTimer); _stepTimer = null; }
   steps.forEach(function(id){ document.getElementById(id).className = 'ps done'; });
   document.getElementById('spin').style.display = 'none';
   document.getElementById('prog-lbl').textContent = 'COMPLETE';
+}
+
+// Animate progress steps on a timer while the single backend request runs
+function startProgressAnimation() {
+  var i = 0;
+  activateStep(0);
+  // Advance one step roughly every 18s (typical pillar takes ~15-20s)
+  _stepTimer = setInterval(function() {
+    i++;
+    if (i < steps.length - 1) activateStep(i);
+    else { clearInterval(_stepTimer); _stepTimer = null; }
+  }, 18000);
 }
 
 // ── Render helpers ────────────────────────────────────────────────────────────
@@ -284,6 +289,7 @@ function statBadge(count, type, label) {
 
 function setStatus(key, cls, text) {
   var el = document.getElementById('st-' + key);
+  if (!el) return;
   el.textContent = text;
   el.className   = 'ar-status ' + cls;
 }
@@ -291,6 +297,7 @@ function setStatus(key, cls, text) {
 function renderSuccess(key, data) {
   setStatus(key, 'ok', 'DONE');
   var bodyEl = document.getElementById('body-' + key);
+  if (!bodyEl) return;
   var label  = { framework:'FRAMEWORK', health:'HEALTH', mastery:'MASTERY', strategy:'STRATEGY' }[key] || key.toUpperCase();
 
   var html = '<a class="ar-dl" href="/download/' + encodeURIComponent(data.download_filename) + '" target="_blank">↓ &nbsp;DOWNLOAD ' + label + '</a>';
@@ -314,66 +321,75 @@ function renderSuccess(key, data) {
 
 function renderError(key, msg) {
   setStatus(key, 'error', 'ERROR');
-  document.getElementById('body-' + key).innerHTML = '<div class="ar-error">⚠ ' + msg + '</div>';
+  var bodyEl = document.getElementById('body-' + key);
+  if (bodyEl) bodyEl.innerHTML = '<div class="ar-error">⚠ ' + msg + '</div>';
 }
 
-// ── Post one agent ────────────────────────────────────────────────────────────
-function postAgent(endpoint, key, formData) {
-  setStatus(key, 'running', 'RUNNING');
-  return fetch(endpoint, { method: 'POST', body: formData })
-    .then(function(r){ return r.json(); })
-    .then(function(data){
-      if (data.error) renderError(key, data.error);
-      else            renderSuccess(key, data);
-    })
-    .catch(function(e){ renderError(key, e.message || 'Network error'); });
-}
+// Map pillar label from backend to card key used in HTML ids
+var PILLAR_KEY = {
+  'Framework':      'framework',
+  'Account Health': 'health',
+  'Account Mastery':'mastery',
+  'Strategy':       'strategy'
+};
 
-// ── Run all 4 in parallel ─────────────────────────────────────────────────────
-runB.addEventListener('click', function() {
+// ── Run — single request to /analyze/dsp/all ──────────────────────────────────
+runB.addEventListener('click', async function() {
   if (!file) return;
   runB.disabled = true;
   errEl.style.display = 'none';
   reset.style.display = 'none';
 
-  // Show results panel immediately with PENDING state
+  // Show results panel with RUNNING state on all cards
   ['framework','health','mastery','strategy'].forEach(function(k){
-    setStatus(k, 'pending', 'PENDING');
+    setStatus(k, 'running', 'RUNNING');
     document.getElementById('body-' + k).innerHTML = '';
   });
   res.style.display  = 'block';
   prog.style.display = 'block';
   document.getElementById('spin').style.display = '';
-  document.getElementById('prog-lbl').textContent = 'PROCESSING — ALL 4 DSP AGENTS RUNNING IN PARALLEL';
-  startSteps();
+  document.getElementById('prog-lbl').textContent = 'PROCESSING — ALL 4 DSP AGENTS RUNNING';
 
-  var agents = [
-    { endpoint: '/analyze/dsp/framework', key: 'framework' },
-    { endpoint: '/analyze/dsp/health',    key: 'health'    },
-    { endpoint: '/analyze/dsp/mastery',   key: 'mastery'   },
-    { endpoint: '/analyze/dsp/strategy',  key: 'strategy'  },
-  ];
+  startProgressAnimation();
 
-  // Sequential — one agent at a time to avoid single-worker timeout on Render free tier
-  // Each card updates to DONE/ERROR as it completes before the next one starts
-  (function runNext(i) {
-    if (i >= agents.length) {
-      doneSteps();
-      reset.style.display = 'block';
-      res.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      return;
+  var fd = new FormData();
+  fd.append('file', file);
+
+  try {
+    var r = await fetch('/analyze/dsp/all', { method: 'POST', body: fd });
+    var data = await r.json();
+
+    if (data.error) {
+      // Top-level error — show on all cards
+      ['framework','health','mastery','strategy'].forEach(function(k){
+        renderError(k, data.error);
+      });
+    } else if (data.pillars && Array.isArray(data.pillars)) {
+      // Unpack each pillar result into its card
+      data.pillars.forEach(function(p) {
+        var key = PILLAR_KEY[p.pillar];
+        if (key) renderSuccess(key, p);
+      });
+      // Any card still RUNNING means it wasn't returned — mark as error
+      ['framework','health','mastery','strategy'].forEach(function(k){
+        var el = document.getElementById('st-' + k);
+        if (el && el.textContent === 'RUNNING') renderError(k, 'No result returned for this pillar.');
+      });
+    } else {
+      ['framework','health','mastery','strategy'].forEach(function(k){
+        renderError(k, 'Unexpected response from server.');
+      });
     }
-    var a  = agents[i];
-    var fd = new FormData();
-    fd.append('file', file);
-    postAgent(a.endpoint, a.key, fd).then(function() { runNext(i + 1); });
-  }(0));
-});
+  } catch(e) {
+    ['framework','health','mastery','strategy'].forEach(function(k){
+      renderError(k, e.message || 'Network error');
+    });
+  }
 
-function showErr(msg) {
-  errEl.textContent   = '⚠  ' + msg;
-  errEl.style.display = 'block';
-}
+  doneSteps();
+  reset.style.display = 'block';
+  res.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
 
 reset.addEventListener('click', function() {
   file = null; fi.value = '';
