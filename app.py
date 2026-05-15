@@ -139,63 +139,92 @@ def run_amazon_mastery(input_path: str) -> dict:
 
 # ── DSP agents ────────────────────────────────────────────────────────────────
 
-def _run_dsp_agent(input_path: str, pillar_key: str, pillar_label: str,
-                   output_suffix: str) -> dict:
+def _run_dsp_all(input_path: str) -> dict:
+    """Load DSP context once, run all four pillars sequentially, return combined result."""
     from reader_databricks_dsp import load_dsp_context
+    from rules_engine_dsp_framework import evaluate_all as fw_eval, compute_score as fw_score
+    from rules_engine_dsp_health import evaluate_all as ah_eval, compute_score as ah_score
+    from rules_engine_dsp_mastery import evaluate_all as am_eval, compute_score as am_score
+    from rules_engine_dsp_strategy import evaluate_all as st_eval, compute_score as st_score
+    from writer_dsp_framework import write_dsp_framework_output
+    from writer_dsp_health import write_dsp_health_output
+    from writer_dsp_mastery import write_dsp_mastery_output
+    from writer_dsp_strategy import write_dsp_strategy_output
 
-    template = TEMPLATES[pillar_key]
-    if not template.exists():
-        raise FileNotFoundError(f"Template not found: {template}")
+    for key in ("dsp_framework", "dsp_mastery", "dsp_health", "dsp_strategy"):
+        if not TEMPLATES[key].exists():
+            raise FileNotFoundError(f"Template not found: {TEMPLATES[key]}")
 
     ctx = load_dsp_context(input_path)
     safe_hash = _safe_fn(ctx.hash_name)
-
-    # Dynamic import per pillar
-    if pillar_key == "dsp_framework":
-        from rules_engine_dsp_framework import evaluate_all, compute_score
-        from writer_dsp_framework import write_dsp_framework_output as write_fn
-        def _write(tmpl, out, res, c): write_fn(tmpl, out, res, c)
-    elif pillar_key == "dsp_mastery":
-        from rules_engine_dsp_mastery import evaluate_all, compute_score
-        from writer_dsp_mastery import write_dsp_mastery_output as write_fn
-        def _write(tmpl, out, res, c): write_fn(tmpl, out, res, c)
-    elif pillar_key == "dsp_health":
-        from rules_engine_dsp_health import evaluate_all, compute_score
-        from writer_dsp_health import write_dsp_health_output as write_fn
-        def _write(tmpl, out, res, c): write_fn(tmpl, out, res, c)
-    elif pillar_key == "dsp_strategy":
-        from rules_engine_dsp_strategy import evaluate_all, compute_score
-        from writer_dsp_strategy import write_dsp_strategy_output as write_fn
-        def _write(tmpl, out, res, c): write_fn(tmpl, out, res, c)
-    else:
-        raise ValueError(f"Unknown DSP pillar key: {pillar_key}")
-
-    results = evaluate_all(ctx)
-    penalty, score, grade, findings = compute_score(results)
-
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_name = f"{safe_hash} - {output_suffix} - {ts}.xlsm"
-    out_path = OUTPUT_DIR / out_name
+    pillars = []
 
-    _write(str(template), str(out_path), results, ctx)
-    _verify_output(out_path)
+    def _pillar_info(results, score, grade, pillar_label, out_name):
+        return {
+            "pillar": pillar_label,
+            "download_filename": out_name,
+            "download_url": f"/download/{out_name}",
+            "score": round(score, 1),
+            "grade": grade,
+            "ok":      sum(1 for r in results.values() if r.status == "OK"),
+            "flag":    sum(1 for r in results.values() if r.status == "FLAG"),
+            "partial": sum(1 for r in results.values() if r.status == "PARTIAL"),
+            "flag_ids":    [c for c, r in results.items() if r.status == "FLAG"],
+            "partial_ids": [c for c, r in results.items() if r.status == "PARTIAL"],
+        }
 
-    info = {
-        "download_filename": out_name,
-        "account": ctx.hash_name,
-        "pillar": pillar_label,
-        "platform": "DSP",
-        "score": round(score, 1),
-        "grade": grade,
-        "ok":      sum(1 for r in results.values() if r.status == "OK"),
-        "flag":    sum(1 for r in results.values() if r.status == "FLAG"),
-        "partial": sum(1 for r in results.values() if r.status == "PARTIAL"),
-        "flag_ids":    [c for c, r in results.items() if r.status == "FLAG"],
-        "partial_ids": [c for c, r in results.items() if r.status == "PARTIAL"],
-    }
-    del ctx, results
-    gc.collect()
-    return info
+    # Framework
+    fw_res = fw_eval(ctx)
+    _, fw_s, fw_g, _ = fw_score(fw_res)
+    fw_name = f"{safe_hash} - DSP Framework Analysis - {ts}.xlsm"
+    write_dsp_framework_output(str(TEMPLATES["dsp_framework"]), str(OUTPUT_DIR / fw_name), fw_res, ctx)
+    _verify_output(OUTPUT_DIR / fw_name)
+    pillars.append(_pillar_info(fw_res, fw_s, fw_g, "Framework", fw_name))
+    del fw_res; gc.collect()
+
+    # Account Health
+    ah_res = ah_eval(ctx)
+    _, ah_s, ah_g, _ = ah_score(ah_res)
+    ah_name = f"{safe_hash} - DSP Health Analysis - {ts}.xlsm"
+    write_dsp_health_output(str(TEMPLATES["dsp_health"]), str(OUTPUT_DIR / ah_name), ah_res, ctx)
+    _verify_output(OUTPUT_DIR / ah_name)
+    pillars.append(_pillar_info(ah_res, ah_s, ah_g, "Account Health", ah_name))
+    del ah_res; gc.collect()
+
+    # Account Mastery
+    am_res = am_eval(ctx)
+    _, am_s, am_g, _ = am_score(am_res)
+    am_name = f"{safe_hash} - DSP Mastery Analysis - {ts}.xlsm"
+    write_dsp_mastery_output(str(TEMPLATES["dsp_mastery"]), str(OUTPUT_DIR / am_name), am_res, ctx)
+    _verify_output(OUTPUT_DIR / am_name)
+    pillars.append(_pillar_info(am_res, am_s, am_g, "Account Mastery", am_name))
+    del am_res; gc.collect()
+
+    # Strategy
+    st_res = st_eval(ctx)
+    _, st_s, st_g, _ = st_score(st_res)
+    st_name = f"{safe_hash} - DSP Strategy Analysis - {ts}.xlsm"
+    write_dsp_strategy_output(str(TEMPLATES["dsp_strategy"]), str(OUTPUT_DIR / st_name), st_res, ctx)
+    _verify_output(OUTPUT_DIR / st_name)
+    pillars.append(_pillar_info(st_res, st_s, st_g, "Strategy", st_name))
+    del st_res
+
+    account = ctx.hash_name
+    del ctx; gc.collect()
+
+    return {"account": account, "platform": "DSP", "pillars": pillars}
+
+
+def _run_dsp_agent(input_path: str, pillar_key: str, pillar_label: str,
+                   output_suffix: str) -> dict:
+    """Runs all pillars, returns the requested one — preserves individual route compat."""
+    all_res = _run_dsp_all(input_path)
+    for p in all_res["pillars"]:
+        if p["pillar"] == pillar_label:
+            return {**p, "account": all_res["account"], "platform": "DSP"}
+    p = all_res["pillars"][0]
+    return {**p, "account": all_res["account"], "platform": "DSP"}
 
 
 def _verify_output(path: Path):
@@ -275,6 +304,42 @@ def analyze_dsp_health():
 @app.route("/analyze/dsp/strategy", methods=["POST"])
 def analyze_dsp_strategy():
     return _handle_upload(request, lambda p: _run_dsp_agent(p, "dsp_strategy", "Strategy", "DSP Strategy Analysis"))
+
+
+@app.route("/analyze/dsp/all", methods=["POST"])
+def analyze_dsp_all():
+    """Single endpoint that runs all four DSP pillars sequentially and returns combined JSON.
+    Response shape: { account, platform, pillars: [ {pillar, download_filename, download_url,
+    score, grade, ok, flag, partial, flag_ids, partial_ids}, ... ] }
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded."}), 400
+    uploaded = request.files["file"]
+    if not uploaded.filename:
+        return jsonify({"error": "No file selected."}), 400
+    _, ext = os.path.splitext(uploaded.filename.lower())
+    if ext not in {".xlsx", ".xlsm"}:
+        return jsonify({"error": "Only .xlsx or .xlsm files accepted."}), 400
+
+    safe_name  = secure_filename(uploaded.filename)
+    input_path = str(UPLOAD_DIR / safe_name)
+    uploaded.save(input_path)
+
+    try:
+        result = _run_dsp_all(input_path)
+    except FileNotFoundError as e:
+        return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": f"Analysis failed: {e}"}), 500
+    finally:
+        try:
+            os.remove(input_path)
+        except Exception:
+            pass
+        gc.collect()
+
+    return jsonify(result)
 
 
 # Download route
